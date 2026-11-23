@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Artist Office</title>
+
+  <!-- iOS / PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Artist Office">
+  <link rel="apple-touch-icon" href="https://img.icons8.com/color/180/music-folder.png">
+
+  <!-- Tailwind CSS & FontAwesome Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: 'var(--brand-color)',
+            brandDark: 'var(--brand-dark)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --brand-color: #38bdf8;
+      --brand-dark: #0284c7;
+    }
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .accent-bg { background-color: var(--brand-color); }
+    .accent-text { color: var(--brand-color); }
+    .accent-border { border-color: var(--brand-color); }
+  </style>
+
+  <!-- Firebase Web SDK (v9 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="min-h-screen flex flex-col pb-24">
+
+  <!-- TOP BAR -->
+  <header class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-30 flex items-center justify-between shadow-md">
+    <div class="flex items-center gap-3">
+      <i class="fa-solid fa-compact-disc text-2xl text-sky-400 animate-spin-slow"></i>
+      <h1 class="text-xl font-bold tracking-wide">Artist Office</h1>
+    </div>
+    <div id="user-info" class="hidden flex items-center gap-3">
+      <span id="user-name" class="text-xs text-slate-400"></span>
+      <button onclick="logout()" class="text-slate-400 hover:text-red-400 p-2"><i class="fa-solid fa-right-from-bracket"></i></button>
+    </div>
+  </header>
+
+  <main id="app-container" class="flex-1 p-4 max-w-xl mx-auto w-full">
+
+    <!-- AUTH SCREEN -->
+    <div id="auth-screen" class="flex flex-col justify-center min-h-[70vh]">
+      <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl text-center">
+        <i class="fa-solid fa-music text-5xl text-sky-400 mb-4"></i>
+        <h2 class="text-2xl font-bold mb-2">Willkommen</h2>
+        <p class="text-slate-400 text-sm mb-6">Artist Office Cloud Backoffice</p>
+
+        <form id="auth-form" onsubmit="handleAuth(event)" class="space-y-4">
+          <input type="email" id="auth-email" placeholder="E-Mail" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-sky-400">
+          <input type="password" id="auth-password" placeholder="Passwort" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-sky-400">
+
+          <button type="submit" id="auth-submit-btn" class="w-full bg-sky-500 hover:bg-sky-600 text-slate-950 font-bold py-3 rounded-xl shadow-lg transition">Einloggen</button>
+        </form>
+
+        <p id="auth-error" class="text-red-400 text-xs mt-3 hidden"></p>
+
+        <button onclick="toggleAuthMode()" id="auth-toggle-btn" class="text-xs text-slate-400 mt-6 underline">Noch kein Account? Hier registrieren.</button>
+      </div>
+    </div>
+
+    <!-- DASHBOARD SCREEN -->
+    <div id="dashboard-screen" class="hidden space-y-6">
+      <!-- Greeting Header -->
+      <div class="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-lg">
+        <h2 id="greeting-title" class="text-xl font-bold text-sky-400">Guten Tag, Artist</h2>
+        <p class="text-xs text-slate-400">Willkommen im Backoffice</p>
+
+        <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+          <span class="text-slate-400">Design-Akzent:</span>
+          <div class="flex gap-2">
+            <button onclick="setTheme('#38bdf8')" class="w-5 h-5 rounded-full bg-sky-400 ring-2 ring-white/20"></button>
+            <button onclick="setTheme('#a855f7')" class="w-5 h-5 rounded-full bg-purple-500 ring-2 ring-white/20"></button>
+            <button onclick="setTheme('#f59e0b')" class="w-5 h-5 rounded-full bg-amber-500 ring-2 ring-white/20"></button>
+            <button onclick="setTheme('#ef4444')" class="w-5 h-5 rounded-full bg-red-500 ring-2 ring-white/20"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Projects List -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-bold">Deine Projekte</h3>
+          <button id="admin-add-project-btn" onclick="openCreateProjectModal()" class="hidden bg-sky-500/20 text-sky-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-sky-500/30">+ Neues Projekt</button>
+        </div>
+
+        <div id="projects-list" class="space-y-3">
+          <!-- Loaded via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- PROJECT DETAIL SCREEN -->
+    <div id="project-detail-screen" class="hidden space-y-4">
+      <!-- Breadcrumb Nav -->
+      <div class="flex items-center gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+        <button onclick="navigateProjectBack()" class="p-2 text-slate-400 hover:text-white"><i class="fa-solid fa-arrow-left text-lg"></i></button>
+        <h2 id="project-path-title" class="text-base font-bold truncate flex-1">Projekt</h2>
+      </div>
+
+      <!-- Project Tools Horizontal Scroll -->
+      <div>
+        <p class="text-xs text-slate-400 mb-2 font-semibold">Projekt-Tools</p>
+        <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+          <button onclick="openTool('setlists')" class="flex-none bg-slate-900 border border-slate-800 p-3 rounded-xl w-24 text-center hover:border-sky-400/50">
+            <i class="fa-solid fa-microphone text-sky-400 text-lg mb-1 block"></i>
+            <span class="text-xs font-medium block">Setlisten</span>
+          </button>
+          <button onclick="openTool('finances')" class="flex-none bg-slate-900 border border-slate-800 p-3 rounded-xl w-24 text-center hover:border-sky-400/50">
+            <i class="fa-solid fa-coins text-sky-400 text-lg mb-1 block"></i>
+            <span class="text-xs font-medium block">Bandkasse</span>
+          </button>
+          <button onclick="openTool('merch')" class="flex-none bg-slate-900 border border-slate-800 p-3 rounded-xl w-24 text-center hover:border-sky-400/50">
+            <i class="fa-solid fa-shirt text-sky-400 text-lg mb-1 block"></i>
+            <span class="text-xs font-medium block">Merch</span>
+          </button>
+          <button onclick="openTool('calendar')" class="flex-none bg-slate-900 border border-slate-800 p-3 rounded-xl w-24 text-center hover:border-sky-400/50">
+            <i class="fa-solid fa-calendar-days text-sky-400 text-lg mb-1 block"></i>
+            <span class="text-xs font-medium block">Kalender</span>
+          </button>
+          <button onclick="openTool('metronome')" class="flex-none bg-slate-900 border border-slate-800 p-3 rounded-xl w-24 text-center hover:border-sky-400/50">
+            <i class="fa-solid fa-stopwatch text-sky-400 text-lg mb-1 block"></i>
+            <span class="text-xs font-medium block">Metronom</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="grid grid-cols-2 gap-3">
+        <button onclick="openCreateFolderModal()" class="bg-slate-900 border border-slate-700 py-2.5 rounded-xl font-medium text-sm hover:border-sky-400 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-folder-plus text-sky-400"></i> + Ordner
+        </button>
+        <label class="bg-sky-500 hover:bg-sky-600 text-slate-950 font-bold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg">
+          <i class="fa-solid fa-cloud-arrow-up"></i> Hochladen
+          <input type="file" onchange="handleFileUpload(event)" class="hidden" accept="audio/*">
+        </label>
+      </div>
+
+      <!-- Upload Progress Indicator -->
+      <div id="upload-progress" class="hidden bg-sky-500/10 border border-sky-500/30 p-3 rounded-xl text-center text-xs text-sky-400 flex items-center justify-center gap-2">
+        <i class="fa-solid fa-spinner animate-spin"></i> Lade Datei hoch...
+      </div>
+
+      <!-- Category Filter Chips -->
+      <div id="category-chips" class="flex gap-2 overflow-x-auto pb-1">
+        <!-- Categories rendered via JS -->
+      </div>
+
+      <!-- Items List -->
+      <div id="items-list" class="space-y-2">
+        <!-- Loaded via JS -->
+      </div>
+    </div>
+
+    <!-- TOOL MODAL / CONTAINER -->
+    <div id="tool-view" class="hidden space-y-4">
+      <div class="flex items-center gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+        <button onclick="closeTool()" class="p-2 text-slate-400 hover:text-white"><i class="fa-solid fa-arrow-left text-lg"></i></button>
+        <h2 id="tool-title" class="text-base font-bold flex-1">Tool</h2>
+        <button id="tool-action-btn" class="bg-sky-500 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg">+ Neu</button>
+      </div>
+      <div id="tool-content" class="space-y-3"></div>
+    </div>
+
+  </main>
+
+  <!-- PERSISTENT AUDIO PLAYER BAR -->
+  <div id="audio-player-bar" class="hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 p-3 shadow-2xl z-40">
+    <div class="max-w-xl mx-auto flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0 flex-1">
+        <i class="fa-solid fa-circle-play text-2xl text-sky-400"></i>
+        <div class="min-w-0 flex-1">
+          <p id="player-title" class="text-xs font-bold truncate">Song</p>
+          <div class="flex items-center gap-2 text-[10px] text-slate-400">
+            <span id="player-time">00:00 / 00:00</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="togglePlayPause()" id="play-pause-btn" class="w-10 h-10 rounded-full bg-sky-500 text-slate-950 font-bold flex items-center justify-center text-lg shadow"><i class="fa-solid fa-pause"></i></button>
+        <button onclick="closeAudioPlayer()" class="text-slate-400 hover:text-white p-2"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+    </div>
+    <audio id="html5-audio" class="hidden"></audio>
+  </div>
+
+  <!-- SCRIPT APPLICATION CODE -->
+  <script>
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyDvCARMDrag21DpmTLYYuxGXRTOnsvdKXw",
+      authDomain: "artistoffice-cdf5e.firebaseapp.com",
+      projectId: "artistoffice-cdf5e",
+      storageBucket: "artistoffice-cdf5e.firebasestorage.app",
+      messagingSenderId: "802006462877",
+      appId: "1:802006462877:web:artistoffice"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    let currentUser = null;
+    let userRole = 'user';
+    let isRegistering = false;
+    let currentProjectName = '';
+    let folderPath = [];
+    let selectedCategory = 'Alle';
+    let currentItems = [];
+
+    // Audio Player State
+    const audio = document.getElementById('html5-audio');
+
+    audio.ontimeupdate = () => {
+      const cur = Math.floor(audio.currentTime);
+      const dur = Math.floor(audio.duration || 0);
+      document.getElementById('player-time').innerText = `${fmtTime(cur)} / ${fmtTime(dur)}`;
+    };
+
+    function fmtTime(s) {
+      const m = Math.floor(s / 60);
+      const sec = s % 60;
+      return `${m < 10 ? '0' : ''}${m}:${sec < 10 ? '0' : ''}${sec}`;
+    }
+
+    // Auth Change Listener
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        currentUser = user;
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('dashboard-screen').classList.remove('hidden');
+        document.getElementById('user-info').classList.remove('hidden');
+        document.getElementById('user-name').innerText = user.email.split('@')[0];
+
+        // Fetch User Role
+        db.collection('users').doc(user.uid).get().then(doc => {
+          if (doc.exists) {
+            userRole = doc.data().role || 'user';
+            if (userRole === 'admin') {
+              document.getElementById('admin-add-project-btn').classList.remove('hidden');
+            }
+          }
+          loadProjects();
+        });
+      } else {
+        currentUser = null;
+        document.getElementById('auth-screen').classList.remove('hidden');
+        document.getElementById('dashboard-screen').classList.add('hidden');
+        document.getElementById('project-detail-screen').classList.add('hidden');
+        document.getElementById('user-info').classList.add('hidden');
+      }
+    });
+
+    function toggleAuthMode() {
+      isRegistering = !isRegistering;
+      document.getElementById('auth-submit-btn').innerText = isRegistering ? 'Registrieren' : 'Einloggen';
+      document.getElementById('auth-toggle-btn').innerText = isRegistering ? 'Bereits einen Account? Hier einloggen.' : 'Noch kein Account? Hier registrieren.';
+    }
+
+    function handleAuth(e) {
+      e.preventDefault();
+      const email = document.getElementById('auth-email').value;
+      const pass = document.getElementById('auth-password').value;
+      const err = document.getElementById('auth-error');
+      err.classList.add('hidden');
+
+      const action = isRegistering ? auth.createUserWithEmailAndPassword(email, pass) : auth.signInWithEmailAndPassword(email, pass);
+      action.catch(error => {
+        err.innerText = error.message;
+        err.classList.remove('hidden');
+      });
+    }
+
+    function logout() { auth.signOut(); }
+
+    function setTheme(color) {
+      document.documentElement.style.setProperty('--brand-color', color);
+    }
+
+    // Load Projects
+    function loadProjects() {
+      db.collection('projects').onSnapshot(snapshot => {
+        const container = document.getElementById('projects-list');
+        container.innerHTML = '';
+
+        snapshot.docs.forEach(doc => {
+          const p = doc.data();
+          const card = document.createElement('div');
+          card.className = 'bg-slate-900 border border-slate-800 p-4 rounded-2xl cursor-pointer hover:border-sky-400 transition';
+          card.onclick = () => openProject(doc.id);
+          card.innerHTML = `<h4 class="font-bold text-base">${doc.id}</h4><p class="text-xs text-slate-400 mt-1">${p.description || ''}</p>`;
+          container.appendChild(card);
+        });
+      });
+    }
+
+    function openProject(projectName) {
+      currentProjectName = projectName;
+      folderPath = [];
+      document.getElementById('dashboard-screen').classList.add('hidden');
+      document.getElementById('project-detail-screen').classList.remove('hidden');
+      renderBreadcrumb();
+      loadProjectItems();
+    }
+
+    function navigateProjectBack() {
+      if (folderPath.length > 0) {
+        folderPath.pop();
+        renderBreadcrumb();
+        loadProjectItems();
+      } else {
+        document.getElementById('project-detail-screen').classList.add('hidden');
+        document.getElementById('dashboard-screen').classList.remove('hidden');
+      }
+    }
+
+    function renderBreadcrumb() {
+      let path = currentProjectName;
+      if (folderPath.length > 0) {
+        path += ' > ' + folderPath.map(f => f.name).join(' > ');
+      }
+      document.getElementById('project-path-title').innerText = path;
+    }
+
+    function loadProjectItems() {
+      const parentId = folderPath.length > 0 ? folderPath[folderPath.length - 1].id : '';
+      db.collection('projects').doc(currentProjectName).collection('items')
+        .where('parentFolderId', '==', parentId)
+        .onSnapshot(snapshot => {
+          currentItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          renderItems();
+        });
+    }
+
+    function renderItems() {
+      const container = document.getElementById('items-list');
+      container.innerHTML = '';
+
+      const categories = ["Alle", "Full Mix", "Drums", "Vocals", "Bass", "Gitarre", "Sonstiges"];
+      const chipContainer = document.getElementById('category-chips');
+      chipContainer.innerHTML = categories.map(cat => `
+        <button onclick="setCategoryFilter('${cat}')" class="px-3 py-1 rounded-full text-xs font-semibold ${selectedCategory === cat ? 'bg-sky-500 text-slate-950' : 'bg-slate-800 text-slate-400'}">${cat}</button>
+      `).join('');
+
+      const filtered = currentItems.filter(item => item.isFolder || selectedCategory === 'Alle' || item.category === selectedCategory);
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="text-center py-8 text-slate-500 text-sm">Ordner ist leer.</div>';
+        return;
+      }
+
+      filtered.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between gap-3';
+
+        if (item.isFolder) {
+          div.onclick = () => { folderPath.push({ id: item.id, name: item.name }); renderBreadcrumb(); loadProjectItems(); };
+          div.innerHTML = `
+            <div class="flex items-center gap-3 min-w-0">
+              <i class="fa-solid fa-folder text-sky-400 text-lg"></i>
+              <span class="font-medium text-sm truncate">${item.name}</span>
+            </div>
+            <button onclick="deleteItem(event, '${item.id}')" class="text-slate-500 hover:text-red-400 p-2"><i class="fa-solid fa-trash"></i></button>
+          `;
+        } else {
+          div.innerHTML = `
+            <div class="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" onclick="playAudio('${item.name}', '${item.downloadUrl}')">
+              <i class="fa-solid fa-music text-sky-400 text-lg"></i>
+              <div class="min-w-0">
+                <p class="font-medium text-sm truncate">${item.name}</p>
+                <p class="text-[10px] text-slate-400">${item.category}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button onclick="openLyricsModal('${item.id}', '${item.name}', \`${item.lyrics || ''}\`)" class="text-slate-400 hover:text-white p-2"><i class="fa-solid fa-file-lines"></i></button>
+              <button onclick="deleteItem(event, '${item.id}')" class="text-slate-500 hover:text-red-400 p-2"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          `;
+        }
+        container.appendChild(div);
+      });
+    }
+
+    function setCategoryFilter(cat) { selectedCategory = cat; renderItems(); }
+
+    function playAudio(title, url) {
+      document.getElementById('player-title').innerText = title;
+      document.getElementById('audio-player-bar').classList.remove('hidden');
+      audio.src = url;
+      audio.play();
+      document.getElementById('play-pause-btn').innerHTML = '<i class="fa-solid fa-pause"></i>';
+    }
+
+    function togglePlayPause() {
+      if (audio.paused) { audio.play(); document.getElementById('play-pause-btn').innerHTML = '<i class="fa-solid fa-pause"></i>'; }
+      else { audio.pause(); document.getElementById('play-pause-btn').innerHTML = '<i class="fa-solid fa-play"></i>'; }
+    }
+
+    function closeAudioPlayer() { audio.pause(); document.getElementById('audio-player-bar').classList.add('hidden'); }
+
+    // Catbox Cloud Upload
+    function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const progress = document.getElementById('upload-progress');
+      progress.classList.remove('hidden');
+
+      const formData = new FormData();
+      formData.append('reqtype', 'fileupload');
+      formData.append('fileToUpload', file);
+
+      fetch('https://catbox.moe/user/api.php', { method: 'POST', body: formData })
+        .then(res => res.text())
+        .then(url => {
+          progress.classList.add('hidden');
+          if (url.startsWith('http')) {
+            const parentId = folderPath.length > 0 ? folderPath[folderPath.length - 1].id : '';
+            db.collection('projects').doc(currentProjectName).collection('items').add({
+              name: file.name,
+              isFolder: false,
+              downloadUrl: url.trim(),
+              parentFolderId: parentId,
+              category: 'Sonstiges',
+              timestamp: Date.now()
+            });
+          }
+        })
+        .catch(err => {
+          progress.classList.add('hidden');
+          alert('Upload-Fehler: ' + err.message);
+        });
+    }
+
+    function deleteItem(e, id) {
+      e.stopPropagation();
+      if (confirm('Wirklich löschen?')) {
+        db.collection('projects').doc(currentProjectName).collection('items').doc(id).delete();
+      }
+    }
+
+    function openCreateFolderModal() {
+      const name = prompt('Ordner-Name:');
+      if (name) {
+        const parentId = folderPath.length > 0 ? folderPath[folderPath.length - 1].id : '';
+        db.collection('projects').doc(currentProjectName).collection('items').add({
+          name: name.trim(),
+          isFolder: true,
+          downloadUrl: '',
+          parentFolderId: parentId,
+          status: 'Demo',
+          timestamp: Date.now()
+        });
+      }
+    }
+
+    function openLyricsModal(id, name, lyrics) {
+      const text = prompt(`Songtext & Akkorde für ${name}:`, lyrics || '');
+      if (text !== null) {
+        db.collection('projects').doc(currentProjectName).collection('items').doc(id).update({ lyrics: text.trim() });
+      }
+    }
+
+    // Tool View Manager (Setlisten, Bandkasse, Merch, Kalender, Metronom)
+    function openTool(toolType) {
+      document.getElementById('project-detail-screen').classList.add('hidden');
+      document.getElementById('tool-view').classList.remove('hidden');
+      const container = document.getElementById('tool-content');
+      const title = document.getElementById('tool-title');
+      const actionBtn = document.getElementById('tool-action-btn');
+
+      if (toolType === 'setlists') {
+        title.innerText = `Setlisten: ${currentProjectName}`;
+        actionBtn.onclick = () => {
+          const name = prompt('Setlist Name:');
+          const songs = prompt('Songs (kommagetrennt):');
+          if (name) {
+            db.collection('projects').doc(currentProjectName).collection('setlists').add({
+              name, songs: songs ? songs.split(',').map(s => s.trim()) : [], timestamp: Date.now()
+            });
+          }
+        };
+
+        db.collection('projects').doc(currentProjectName).collection('setlists').onSnapshot(snap => {
+          container.innerHTML = snap.docs.map(doc => {
+            const s = doc.data();
+            return `<div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
+              <div><h4 class="font-bold">${s.name}</h4><p class="text-xs text-slate-400">${(s.songs || []).length} Songs</p></div>
+              <button onclick="db.collection('projects').doc('${currentProjectName}').collection('setlists').doc('${doc.id}').delete()" class="text-red-400 p-2"><i class="fa-solid fa-trash"></i></button>
+            </div>`;
+          }).join('');
+        });
+      } else if (toolType === 'finances') {
+        title.innerText = `Bandkasse: ${currentProjectName}`;
+        actionBtn.onclick = () => {
+          const t = prompt('Beschreibung:');
+          const a = parseFloat(prompt('Betrag (€):'));
+          if (t && !isNaN(a)) {
+            db.collection('projects').doc(currentProjectName).collection('finances').add({
+              title: t, amount: Math.abs(a), isIncome: a >= 0, category: 'Gage', timestamp: Date.now()
+            });
+          }
+        };
+
+        db.collection('projects').doc(currentProjectName).collection('finances').onSnapshot(snap => {
+          container.innerHTML = snap.docs.map(doc => {
+            const f = doc.data();
+            return `<div class="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+              <div><p class="font-medium text-sm">${f.title}</p></div>
+              <span class="font-bold ${f.isIncome ? 'text-sky-400' : 'text-red-400'}">${f.isIncome ? '+' : '-'} ${f.amount.toFixed(2)} €</span>
+            </div>`;
+          }).join('');
+        });
+      } else if (toolType === 'calendar') {
+        title.innerText = `Kalender: ${currentProjectName}`;
+        actionBtn.onclick = () => {
+          const t = prompt('Termin (z.B. Probe / Gig Berlin):');
+          const d = prompt('Datum & Uhrzeit (z.B. 15.10. 19:00):');
+          if (t) {
+            db.collection('projects').doc(currentProjectName).collection('events').add({
+              title: t, date: d || '', rsvps: {}, timestamp: Date.now()
+            });
+          }
+        };
+
+        db.collection('projects').doc(currentProjectName).collection('events').onSnapshot(snap => {
+          container.innerHTML = snap.docs.map(doc => {
+            const ev = doc.data();
+            return `<div class="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-2">
+              <div class="flex justify-between font-bold text-sm"><span>${ev.title}</span><span class="text-sky-400">${ev.date}</span></div>
+            </div>`;
+          }).join('');
+        });
+      } else if (toolType === 'metronome') {
+        title.innerText = 'Proberaum Metronom';
+        actionBtn.classList.add('hidden');
+        container.innerHTML = `
+          <div class="bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center space-y-6">
+            <h3 id="bpm-val" class="text-6xl font-extrabold text-sky-400">120</h3>
+            <p class="text-xs text-slate-400">BPM</p>
+            <div class="flex justify-center gap-3">
+              <button onclick="changeBpm(-5)" class="bg-slate-800 text-sm font-bold px-4 py-2 rounded-xl">-5</button>
+              <button onclick="changeBpm(5)" class="bg-slate-800 text-sm font-bold px-4 py-2 rounded-xl">+5</button>
+            </div>
+            <button onclick="toggleWebMetronome()" id="metro-btn" class="w-full bg-sky-500 text-slate-950 font-bold py-3 rounded-xl">Starten</button>
+          </div>
+        `;
+      }
+    }
+
+    function closeTool() {
+      document.getElementById('tool-view').classList.add('hidden');
+      document.getElementById('project-detail-screen').classList.remove('hidden');
+      document.getElementById('tool-action-btn').classList.remove('hidden');
+    }
+
+    // Web Metronome Logic
+    let metroBpm = 120;
+    let metroInterval = null;
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function changeBpm(delta) {
+      metroBpm = Math.max(30, Math.min(260, metroBpm + delta));
+      document.getElementById('bpm-val').innerText = metroBpm;
+      if (metroInterval) { toggleWebMetronome(); toggleWebMetronome(); }
+    }
+
+    function toggleWebMetronome() {
+      const btn = document.getElementById('metro-btn');
+      if (metroInterval) {
+        clearInterval(metroInterval);
+        metroInterval = null;
+        btn.innerText = 'Starten';
+      } else {
+        metroInterval = setInterval(() => {
+          const osc = audioCtx.createOscillator();
+          osc.frequency.value = 880;
+          osc.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.05);
+        }, (60000 / metroBpm));
+        btn.innerText = 'Stoppen';
+      }
+    }
+  </script>
+</body>
+</html>

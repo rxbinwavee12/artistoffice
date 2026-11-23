@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "802006462877",
+    "project_id": "artistoffice-cdf5e",
+    "storage_bucket": "artistoffice-cdf5e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:802006462877:android:7fae912f6d6cf06b8dbf74",
+        "android_client_info": {
+          "package_name": "com.hb.office"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDvCARMDrag21DpmTLYYuxGXRTOnsvdKXw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
