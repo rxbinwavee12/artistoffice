@@ -43,10 +43,13 @@ import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Poll
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.UploadFile
 import android.webkit.WebView
@@ -165,6 +168,14 @@ class MainActivity : ComponentActivity() {
                             composable("calendarManager/{projectName}") { backStackEntry ->
                                 val projectName = backStackEntry.arguments?.getString("projectName") ?: ""
                                 CalendarScreen(projectName = projectName, onNavigateBack = { navController.popBackStack() })
+                            }
+                            composable("pollManager/{projectName}") { backStackEntry ->
+                                val projectName = backStackEntry.arguments?.getString("projectName") ?: ""
+                                PollScreen(projectName = projectName, onNavigateBack = { navController.popBackStack() })
+                            }
+                            composable("linkHubManager/{projectName}") { backStackEntry ->
+                                val projectName = backStackEntry.arguments?.getString("projectName") ?: ""
+                                LinkHubScreen(projectName = projectName, onNavigateBack = { navController.popBackStack() })
                             }
                             composable("metronome") {
                                 MetronomeScreen(onNavigateBack = { navController.popBackStack() })
@@ -728,6 +739,8 @@ fun ProjectDetailScreen(
             Triple("Bandkasse", Icons.Default.AttachMoney) { onNavigateToTool("financeManager") },
             Triple("Merch", Icons.Default.ShoppingCart) { onNavigateToTool("merchManager") },
             Triple("Kalender", Icons.Default.DateRange) { onNavigateToTool("calendarManager") },
+            Triple("Umfragen", Icons.Default.Poll) { onNavigateToTool("pollManager") },
+            Triple("Socials", Icons.Default.Share) { onNavigateToTool("linkHubManager") },
             Triple("Metronom", Icons.Default.AudioFile) { onNavigateToMetronome() }
         )
 
@@ -1006,6 +1019,13 @@ fun DashboardScreen(
     val userRole by projectViewModel.userRole.collectAsState()
     val userName by projectViewModel.userName.collectAsState()
     val showApprovalEvent by projectViewModel.showApprovalEvent.collectAsState()
+    val isKickedOut by projectViewModel.isKickedOut.collectAsState()
+
+    LaunchedEffect(isKickedOut) {
+        if (isKickedOut) {
+            onLogout()
+        }
+    }
 
     var showCreateDialog by remember { mutableStateOf(false) }
 
@@ -1214,11 +1234,38 @@ fun AdminScreen(
     adminViewModel: AdminViewModel = viewModel(),
     projectViewModel: ProjectViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val users by adminViewModel.users.collectAsState()
     val isLoading by adminViewModel.isLoading.collectAsState()
     val allProjects by projectViewModel.projects.collectAsState()
 
     var userToEdit by remember { mutableStateOf<UserProfile?>(null) }
+    var userToDelete by remember { mutableStateOf<UserProfile?>(null) }
+
+    if (userToDelete != null) {
+        val targetUser = userToDelete!!
+        AlertDialog(
+            onDismissRequest = { userToDelete = null },
+            title = { Text("Mitglied löschen") },
+            text = { Text("Möchtest du den Account von '${targetUser.email}' wirklich unwiderruflich aus dem Backoffice löschen?") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    onClick = {
+                        adminViewModel.deleteUser(context, targetUser.uid, targetUser.email)
+                        userToDelete = null
+                    }
+                ) {
+                    Text("Löschen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { userToDelete = null }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
 
     if (userToEdit != null) {
         val user = userToEdit!!
@@ -1342,8 +1389,7 @@ fun AdminScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        onClick = { userToEdit = u }
+                            .padding(vertical = 6.dp)
                     ) {
                         Row(
                             modifier = Modifier.padding(16.dp),
@@ -1367,6 +1413,14 @@ fun AdminScreen(
                             }
                             Button(onClick = { userToEdit = u }) {
                                 Text("Bearbeiten")
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            IconButton(onClick = { userToDelete = u }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Mitglied löschen",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
                     }
@@ -1838,6 +1892,184 @@ fun CalendarScreen(
                                 IconButton(onClick = { calendarViewModel.deleteEvent(projectName, ev.id) }) {
                                     Icon(imageVector = Icons.Default.Delete, contentDescription = "Löschen", tint = MaterialTheme.colorScheme.error)
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PollScreen(
+    projectName: String,
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    pollViewModel: PollViewModel = viewModel()
+) {
+    val polls by pollViewModel.polls.collectAsState()
+    val isLoading by pollViewModel.isLoading.collectAsState()
+    val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email?.substringBefore("@") ?: "User"
+
+    var showCreateDialog by remember { mutableStateOf(false) }
+
+    if (showCreateDialog) {
+        var question by remember { mutableStateOf("") }
+        var opt1 by remember { mutableStateOf("") }
+        var opt2 by remember { mutableStateOf("") }
+        var opt3 by remember { mutableStateOf("") }
+        var opt4 by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = { Text("Neue Umfrage erstellen ($projectName)") },
+            text = {
+                Column {
+                    OutlinedTextField(value = question, onValueChange = { question = it }, label = { Text("Frage (z.B. Welches Shirt?)") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(value = opt1, onValueChange = { opt1 = it }, label = { Text("Option 1") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(value = opt2, onValueChange = { opt2 = it }, label = { Text("Option 2") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(value = opt3, onValueChange = { opt3 = it }, label = { Text("Option 3 (optional)") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(value = opt4, onValueChange = { opt4 = it }, label = { Text("Option 4 (optional)") }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (question.isNotBlank() && opt1.isNotBlank() && opt2.isNotBlank()) {
+                            pollViewModel.createPoll(projectName, question, listOf(opt1, opt2, opt3, opt4))
+                            showCreateDialog = false
+                        }
+                    }
+                ) { Text("Erstellen") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateDialog = false }) { Text("Abbrechen") } }
+        )
+    }
+
+    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
+            IconButton(onClick = onNavigateBack) { Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Zurück") }
+            Text(text = "Band-Umfragen: $projectName", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Button(onClick = { showCreateDialog = true }) { Text("+ Umfrage") }
+        }
+
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(polls) { poll ->
+                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                                Text(text = poll.question, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { pollViewModel.deletePoll(projectName, poll.id) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Löschen", tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            val totalVotes = poll.votes.size
+                            val myVote = poll.votes[currentUser]
+
+                            poll.options.forEachIndexed { idx, opt ->
+                                val votesForOpt = poll.votes.count { it.value == idx }
+                                val percentage = if (totalVotes > 0) (votesForOpt.toFloat() / totalVotes) else 0f
+
+                                Column(modifier = Modifier.fillMaxWidth().clickable { pollViewModel.castVote(projectName, poll.id, currentUser, idx) }.padding(vertical = 4.dp)) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = opt, style = MaterialTheme.typography.bodyMedium, color = if (myVote == idx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                        Text(text = "$votesForOpt Stimme(n)", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    LinearProgressIndicator(
+                                        progress = { percentage },
+                                        modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 4.dp),
+                                        color = if (myVote == idx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LinkHubScreen(
+    projectName: String,
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    linkHubViewModel: LinkHubViewModel = viewModel()
+) {
+    val context = LocalContext.current
+    val links by linkHubViewModel.links.collectAsState()
+    val isLoading by linkHubViewModel.isLoading.collectAsState()
+
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    if (showAddDialog) {
+        var platform by remember { mutableStateOf("") }
+        var url by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Neuen Link hinzufügen ($projectName)") },
+            text = {
+                Column {
+                    OutlinedTextField(value = platform, onValueChange = { platform = it }, label = { Text("Plattform (z.B. Spotify / Instagram)") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("Link-URL (https://...)") }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (platform.isNotBlank() && url.isNotBlank()) {
+                            linkHubViewModel.addLink(projectName, platform, url)
+                            showAddDialog = false
+                        }
+                    }
+                ) { Text("Hinzufügen") }
+            },
+            dismissButton = { TextButton(onClick = { showAddDialog = false }) { Text("Abbrechen") } }
+        )
+    }
+
+    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
+            IconButton(onClick = onNavigateBack) { Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Zurück") }
+            Text(text = "Socials & Link-Hub: $projectName", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Button(onClick = { showAddDialog = true }) { Text("+ Link") }
+        }
+
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(links) { link ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = link.platform, style = MaterialTheme.typography.titleMedium)
+                                Text(text = link.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            IconButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clip = android.content.ClipData.newPlainText("Copied Link", link.url)
+                                clipboard.setPrimaryClip(clip)
+                                android.widget.Toast.makeText(context, "Link in die Zwischenablage kopiert!", android.widget.Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(imageVector = Icons.Default.Share, contentDescription = "Kopieren", tint = MaterialTheme.colorScheme.secondary)
+                            }
+                            IconButton(onClick = { linkHubViewModel.deleteLink(projectName, link.id) }) {
+                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Löschen", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }

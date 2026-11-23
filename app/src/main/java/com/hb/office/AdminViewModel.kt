@@ -62,4 +62,19 @@ class AdminViewModel : ViewModel() {
         )
         db.collection("users").document(uid).update(userData)
     }
+
+    fun deleteUser(context: android.content.Context, uid: String, email: String) {
+        val usersRef = db.collection("users")
+        if (uid.isNotBlank()) {
+            usersRef.document(uid).delete()
+        }
+        if (email.isNotBlank()) {
+            usersRef.whereEqualTo("email", email.trim()).get().addOnSuccessListener { snapshot ->
+                for (doc in snapshot.documents) {
+                    doc.reference.delete()
+                }
+            }
+        }
+        android.widget.Toast.makeText(context, "Mitglied $email gelöscht", android.widget.Toast.LENGTH_SHORT).show()
+    }
 }

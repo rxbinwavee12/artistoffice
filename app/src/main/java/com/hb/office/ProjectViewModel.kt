@@ -33,6 +33,9 @@ class ProjectViewModel : ViewModel() {
     private val _showApprovalEvent = MutableStateFlow(false)
     val showApprovalEvent: StateFlow<Boolean> = _showApprovalEvent.asStateFlow()
 
+    private val _isKickedOut = MutableStateFlow(false)
+    val isKickedOut: StateFlow<Boolean> = _isKickedOut.asStateFlow()
+
     init {
         checkUserRoleAndLoadProjects()
     }
@@ -49,26 +52,17 @@ class ProjectViewModel : ViewModel() {
         }
 
         db.collection("users").document(uid).addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                // Bei Fehler direkt als 'user' laden
-                loadProjects("user", listOf("Hindenburg", "SchuppenRecords"))
+            if (error != null || snapshot == null || !snapshot.exists()) {
+                // Profil wurde gelöscht -> Sofort rausschmeißen (aber Auth-Konto unberührt lassen für späteren Re-Login)
+                FirebaseAuth.getInstance().signOut()
+                _isKickedOut.value = true
+                _userRole.value = "user"
+                _projects.value = emptyList()
+                _isLoading.value = false
                 return@addSnapshotListener
             }
 
-            if (snapshot == null || !snapshot.exists()) {
-                val userEmail = FirebaseAuth.getInstance().currentUser?.email ?: "user@office.de"
-                val userData = mapOf(
-                    "email" to userEmail,
-                    "username" to userEmail.substringBefore("@"),
-                    "role" to "user",
-                    "allowedProjects" to listOf("Hindenburg", "SchuppenRecords")
-                )
-                db.collection("users").document(uid).set(userData)
-                loadProjects("user", listOf("Hindenburg", "SchuppenRecords"))
-                return@addSnapshotListener
-            }
-
-            val role = snapshot?.getString("role") ?: "user"
+            val role = snapshot.getString("role") ?: "user"
             _userRole.value = role
 
             val fetchedName = snapshot?.getString("username")?.takeIf { it.isNotBlank() }

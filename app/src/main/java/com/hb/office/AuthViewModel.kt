@@ -22,9 +22,19 @@ class AuthViewModel : ViewModel() {
                 if (task.isSuccessful) {
                     val user = task.result?.user
                     if (user != null) {
-                        ensureUserDocumentExists(user.uid, user.email ?: email)
+                        val db = FirebaseFirestore.getInstance()
+                        db.collection("users").document(user.uid).get().addOnSuccessListener { snapshot ->
+                            if (!snapshot.exists()) {
+                                // Wurde gelöscht -> Als komplett neuen, gesperrten Nutzer re-initialisieren
+                                ensureUserDocumentExists(user.uid, user.email ?: email)
+                            }
+                            _authState.value = AuthState.Success
+                        }.addOnFailureListener {
+                            _authState.value = AuthState.Success
+                        }
+                    } else {
+                        _authState.value = AuthState.Success
                     }
-                    _authState.value = AuthState.Success
                 } else {
                     _authState.value = AuthState.Error(task.exception?.message ?: "Login fehlgeschlagen")
                 }
@@ -38,11 +48,26 @@ class AuthViewModel : ViewModel() {
                 if (task.isSuccessful) {
                     val user = task.result?.user
                     if (user != null) {
-                        ensureUserDocumentExists(user.uid, user.email ?: email)
+                        val db = FirebaseFirestore.getInstance()
+                        val userData = mapOf(
+                            "email" to email,
+                            "username" to email.substringBefore("@"),
+                            "role" to "user",
+                            "allowedProjects" to emptyList<String>()
+                        )
+                        db.collection("users").document(user.uid).set(userData).addOnCompleteListener {
+                            _authState.value = AuthState.Success
+                        }
+                    } else {
+                        _authState.value = AuthState.Success
                     }
-                    _authState.value = AuthState.Success
                 } else {
-                    _authState.value = AuthState.Error(task.exception?.message ?: "Registrierung fehlgeschlagen")
+                    val ex = task.exception
+                    if (ex?.message?.contains("already in use", ignoreCase = true) == true) {
+                        _authState.value = AuthState.Error("Diese E-Mail ist bereits registriert. Bitte nutze stattdessen den Login.")
+                    } else {
+                        _authState.value = AuthState.Error(ex?.message ?: "Registrierung fehlgeschlagen")
+                    }
                 }
             }
     }
@@ -56,7 +81,7 @@ class AuthViewModel : ViewModel() {
                     "email" to email,
                     "username" to email.substringBefore("@"),
                     "role" to "user",
-                    "allowedProjects" to listOf("Hindenburg", "SchuppenRecords")
+                    "allowedProjects" to emptyList<String>()
                 )
                 userRef.set(userData)
             }
