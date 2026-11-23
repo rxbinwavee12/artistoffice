@@ -229,6 +229,7 @@
 
     let currentUser = null;
     let userRole = 'user';
+    let userAllowedProjects = [];
     let isRegistering = false;
     let currentProjectName = '';
     let folderPath = [];
@@ -259,22 +260,27 @@
         document.getElementById('user-info').classList.remove('hidden');
         document.getElementById('user-name').innerText = user.email.split('@')[0];
 
-        // Ensure User Doc Exists in Firestore
-        const userRef = db.collection('users').doc(user.uid);
-        userRef.get().then(doc => {
-          if (!doc.exists) {
-            userRef.set({
+        // Realtime User Document & Role Listener
+        db.collection('users').doc(user.uid).onSnapshot(doc => {
+          if (doc.exists) {
+            const data = doc.data();
+            userRole = data.role || 'user';
+            userAllowedProjects = data.allowedProjects || [];
+            if (userRole === 'admin') {
+              document.getElementById('admin-add-project-btn').classList.remove('hidden');
+            } else {
+              document.getElementById('admin-add-project-btn').classList.add('hidden');
+            }
+          } else {
+            // Auto-create initial user document with no allowed projects (unapproved)
+            db.collection('users').doc(user.uid).set({
               email: user.email,
               username: user.email.split('@')[0],
               role: 'user',
-              allowedProjects: ['Hindenburg', 'SchuppenRecords']
+              allowedProjects: []
             });
             userRole = 'user';
-          } else {
-            userRole = doc.data().role || 'user';
-          }
-          if (userRole === 'admin') {
-            document.getElementById('admin-add-project-btn').classList.remove('hidden');
+            userAllowedProjects = [];
           }
           loadProjects();
         });
@@ -300,11 +306,28 @@
       const err = document.getElementById('auth-error');
       err.classList.add('hidden');
 
-      const action = isRegistering ? auth.createUserWithEmailAndPassword(email, pass) : auth.signInWithEmailAndPassword(email, pass);
-      action.catch(error => {
-        err.innerText = error.message;
-        err.classList.remove('hidden');
-      });
+      if (isRegistering) {
+        auth.createUserWithEmailAndPassword(email, pass)
+          .then(cred => {
+            const u = cred.user;
+            return db.collection('users').doc(u.uid).set({
+              email: u.email,
+              username: u.email.split('@')[0],
+              role: 'user',
+              allowedProjects: []
+            });
+          })
+          .catch(error => {
+            err.innerText = error.message;
+            err.classList.remove('hidden');
+          });
+      } else {
+        auth.signInWithEmailAndPassword(email, pass)
+          .catch(error => {
+            err.innerText = error.message;
+            err.classList.remove('hidden');
+          });
+      }
     }
 
     function logout() { auth.signOut(); }
@@ -313,13 +336,32 @@
       document.documentElement.style.setProperty('--brand-color', color);
     }
 
-    // Load Projects
+    // Load Projects with strict Role & AllowedProjects filtering
     function loadProjects() {
       db.collection('projects').onSnapshot(snapshot => {
         const container = document.getElementById('projects-list');
         container.innerHTML = '';
 
-        snapshot.docs.forEach(doc => {
+        const visibleDocs = snapshot.docs.filter(doc => {
+          const name = doc.id;
+          if (userRole === 'admin') return true;
+          if (userRole === 'hb' && (name.toLowerCase() === 'hindenburg' || userAllowedProjects.includes(name))) return true;
+          if (userRole === 'sr' && (name.toLowerCase() === 'schuppenrecords' || userAllowedProjects.includes(name))) return true;
+          return userAllowedProjects.includes(name);
+        });
+
+        if (visibleDocs.length === 0) {
+          container.innerHTML = `
+            <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl text-center">
+              <i class="fa-solid fa-clock text-amber-400 text-3xl mb-3"></i>
+              <h4 class="font-bold text-sm mb-1">Warte auf Freischaltung</h4>
+              <p class="text-xs text-slate-400">Aktuell siehst du keine Projekte. Warte bitte bis ein Admin dein Konto freischaltet.</p>
+            </div>
+          `;
+          return;
+        }
+
+        visibleDocs.forEach(doc => {
           const p = doc.data();
           const card = document.createElement('div');
           card.className = 'bg-slate-900 border border-slate-800 p-4 rounded-2xl cursor-pointer hover:border-sky-400 transition';
