@@ -259,13 +259,22 @@
         document.getElementById('user-info').classList.remove('hidden');
         document.getElementById('user-name').innerText = user.email.split('@')[0];
 
-        // Fetch User Role
-        db.collection('users').doc(user.uid).get().then(doc => {
-          if (doc.exists) {
+        // Ensure User Doc Exists in Firestore
+        const userRef = db.collection('users').doc(user.uid);
+        userRef.get().then(doc => {
+          if (!doc.exists) {
+            userRef.set({
+              email: user.email,
+              username: user.email.split('@')[0],
+              role: 'user',
+              allowedProjects: ['Hindenburg', 'SchuppenRecords']
+            });
+            userRole = 'user';
+          } else {
             userRole = doc.data().role || 'user';
-            if (userRole === 'admin') {
-              document.getElementById('admin-add-project-btn').classList.remove('hidden');
-            }
+          }
+          if (userRole === 'admin') {
+            document.getElementById('admin-add-project-btn').classList.remove('hidden');
           }
           loadProjects();
         });

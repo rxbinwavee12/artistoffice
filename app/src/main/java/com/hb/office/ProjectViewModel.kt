@@ -51,7 +51,20 @@ class ProjectViewModel : ViewModel() {
         db.collection("users").document(uid).addSnapshotListener { snapshot, error ->
             if (error != null) {
                 // Bei Fehler direkt als 'user' laden
-                loadProjects("user", emptyList())
+                loadProjects("user", listOf("Hindenburg", "SchuppenRecords"))
+                return@addSnapshotListener
+            }
+
+            if (snapshot == null || !snapshot.exists()) {
+                val userEmail = FirebaseAuth.getInstance().currentUser?.email ?: "user@office.de"
+                val userData = mapOf(
+                    "email" to userEmail,
+                    "username" to userEmail.substringBefore("@"),
+                    "role" to "user",
+                    "allowedProjects" to listOf("Hindenburg", "SchuppenRecords")
+                )
+                db.collection("users").document(uid).set(userData)
+                loadProjects("user", listOf("Hindenburg", "SchuppenRecords"))
                 return@addSnapshotListener
             }
 

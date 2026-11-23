@@ -20,6 +20,10 @@ class AuthViewModel : ViewModel() {
         auth.signInWithEmailAndPassword(email, pass)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
+                    val user = task.result?.user
+                    if (user != null) {
+                        ensureUserDocumentExists(user.uid, user.email ?: email)
+                    }
                     _authState.value = AuthState.Success
                 } else {
                     _authState.value = AuthState.Error(task.exception?.message ?: "Login fehlgeschlagen")
@@ -34,24 +38,29 @@ class AuthViewModel : ViewModel() {
                 if (task.isSuccessful) {
                     val user = task.result?.user
                     if (user != null) {
-                        try {
-                            val db = FirebaseFirestore.getInstance()
-                            val userData = mapOf(
-                                "email" to email,
-                                "username" to "", // Wird später exklusiv vom Admin in Firestore eingetragen
-                                "role" to "user",
-                                "allowedProjects" to emptyList<String>()
-                            )
-                            db.collection("users").document(user.uid).set(userData)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                        ensureUserDocumentExists(user.uid, user.email ?: email)
                     }
                     _authState.value = AuthState.Success
                 } else {
                     _authState.value = AuthState.Error(task.exception?.message ?: "Registrierung fehlgeschlagen")
                 }
             }
+    }
+
+    private fun ensureUserDocumentExists(uid: String, email: String) {
+        val db = FirebaseFirestore.getInstance()
+        val userRef = db.collection("users").document(uid)
+        userRef.get().addOnSuccessListener { snapshot ->
+            if (!snapshot.exists()) {
+                val userData = mapOf(
+                    "email" to email,
+                    "username" to email.substringBefore("@"),
+                    "role" to "user",
+                    "allowedProjects" to listOf("Hindenburg", "SchuppenRecords")
+                )
+                userRef.set(userData)
+            }
+        }
     }
 
     fun checkUser() {
